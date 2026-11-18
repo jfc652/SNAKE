@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Générateur Snake Excel</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #f4f6f8; color: #222; padding: 16px;
+    min-height: 100vh;
+  }
+  header {
+    background: linear-gradient(135deg, #4CAF50, #2E7D32);
+    color: white; margin: -16px -16px 16px -16px;
+    padding: 20px; text-align: center;
+  }
+  h1 { font-size: 1.3em; }
+  .card {
+    background: white; border-radius: 12px;
+    padding: 20px; margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  h2 { font-size: 1.1em; margin-bottom: 14px; color: #2E7D32; }
+  .field { margin: 14px 0; }
+  .field label {
+    display: block; font-weight: 600;
+    margin-bottom: 6px; font-size: 0.95em;
+  }
+  .field input[type=text], .field input[type=file] {
+    width: 100%; padding: 12px;
+    border: 1px solid #ccc; border-radius: 8px;
+    font-size: 1em; background: white;
+  }
+  button {
+    padding: 14px 20px; border: none;
+    border-radius: 8px; font-size: 1em;
+    font-weight: 600; cursor: pointer;
+    width: 100%; margin-top: 10px;
+    background: #4CAF50; color: white;
+    transition: background 0.2s;
+  }
+  button:active { background: #388E3C; }
+  button:disabled { background: #aaa; cursor: not-allowed; }
+  .hidden { display: none !important; }
+  .hint { font-size: 0.85em; color: #666; margin-top: 6px; }
+  #log {
+    font-family: monospace; font-size: 0.8em;
+    background: #1a1a1a; color: #0f0;
+    padding: 12px; border-radius: 8px;
+    max-height: 300px; overflow-y: auto;
+    margin-bottom: 14px; white-space: pre-wrap;
+  }
+  .ok { color: #4CAF50; }
+  .err { color: #f44336; }
+  #progress-bar {
+    height: 10px; background: #ddd;
+    border-radius: 5px; overflow: hidden;
+    margin: 10px 0;
+  }
+  #progress-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #4CAF50, #2E7D32);
+    transition: width 0.3s;
+  }
+  .badge {
+    display: inline-block; padding: 3px 8px;
+    background: #E8F5E9; color: #2E7D32;
+    border-radius: 6px; font-size: 0.8em;
+    margin-left: 6px; font-weight: 600;
+  }
+  #drop-zone {
+    border: 3px dashed #4CAF50;
+    border-radius: 10px; padding: 24px 12px;
+    text-align: center; background: #F1F8E9;
+    margin-bottom: 10px; cursor: pointer;
+    transition: background 0.2s;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🐍 Générateur Snake Excel</h1>
+  <p style="font-size:0.85em; margin-top:6px; opacity:0.9">
+    Modèle intégré — il suffit de fournir le CSV
+  </p>
+</header>
+
+<main>
+
+  <section id="step-1" class="card">
+    <h2>📁 Fichier d'entrée</h2>
+
+    <div class="field">
+      <label>
+        📄 Fichier CSV des chambres
+        <span class="badge">Obligatoire</span>
+      </label>
+
+      <div id="drop-zone">
+        <div style="font-size: 2em;">📂</div>
+        <div style="font-weight: 600; margin-top: 6px;">Glissez le CSV ici</div>
+        <div style="font-size: 0.85em; color: #666; margin-top: 4px;">ou tapez pour choisir</div>
+      </div>
+
+      <input type="file" id="file-csv" accept=".csv" style="display:none">
+      <p class="hint" id="csv-info" style="color: #f44336;">Aucun fichier sélectionné</p>
+    </div>
+
+    <div class="field">
+      <label>
+        📊 Modèle Excel Snake
+        <span class="badge">✓ Intégré</span>
+      </label>
+      <p class="hint" id="modele-info">Chargement du modèle embarqué...</p>
+    </div>
+
+    <div class="field">
+      <label>📝 Nom du projet (facultatif, apparaît dans les commentaires)</label>
+      <input type="text" id="inp-projet" placeholder="ex: PLA91_CBM" value="">
+    </div>
+
+    <div class="field">
+      <label>
+        <input type="checkbox" id="opt-sens" style="width:auto; margin-right:8px;">
+        Inverser le sens du réseau (grand → petit)
+      </label>
+    </div>
+
+    <button id="btn-generer" disabled>🚀 Générer les Snakes</button>
+  </section>
+
+  <section id="step-2" class="card hidden">
+    <h2>⚙️ Génération en cours...</h2>
+    <div id="log"></div>
+    <div id="progress-bar"><div id="progress-fill"></div></div>
+  </section>
+
+  <section id="step-3" class="card hidden">
+    <h2>✅ Terminé</h2>
+    <p id="result-msg"></p>
+    <button id="btn-download">⬇️ Télécharger le ZIP</button>
+  </section>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+
+<!-- Modèle base64 -->
+<script src="modele-b64.js"></script>
+
+<script src="app.js"></script>
+</body>
+</html>
