@@ -70,7 +70,7 @@
     border-radius: 6px; font-size: 0.8em;
     margin-left: 6px; font-weight: 600;
   }
- #drop-zone {
+  #drop-zone {
     border: 3px dashed #4CAF50;
     border-radius: 10px;
     padding: 24px 12px;
@@ -79,14 +79,11 @@
     margin-bottom: 10px;
     cursor: pointer;
     transition: background 0.2s;
-}
-
-#drop-zone.dragover {
+  }
+  #drop-zone.dragover {
     background: #E8F5E9;
     border-color: #2E7D32;
-}
-
-</style>
+  }
 </style>
 </head>
 <body>
@@ -120,11 +117,9 @@
     </div>
 
     <div class="field">
-      <label>
-        📷 Dossier des photos (Optionnel)
-      </label>
+      <label>📷 Dossier des photos (Optionnel)</label>
       <input type="file" id="file-photos" webkitdirectory directory multiple style="padding: 8px;">
-      <p class="hint">Sélectionnez le dossier principal (ex: CBM_PLA91_004_02_03V). Le script associera automatiquement les sous-dossiers (MA, MB, MIRE_LG...).</p>
+      <p class="hint" id="photo-hint">Sélectionnez le dossier principal (ex: CBM_PLA91_004_02_03V).</p>
     </div>
 
     <div class="field">
@@ -170,7 +165,6 @@
 
 <!-- Modèle base64 -->
 <script src="modele-b64.js"></script>
-
 <script src="app.js"></script>
 </body>
 </html>
