@@ -1,5 +1,5 @@
 /* ============================================================
-   Générateur Snake Excel par FCI - Version Finale (Mobile)
+   Générateur Snake Excel par FCI - Version PC Finale
    ============================================================ */
 
 const state = {
@@ -12,9 +12,6 @@ const state = {
 
 const $ = id => document.getElementById(id);
 
-/* ---------- Détection Mobile ---------- */
-const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
 /* ---------- Pré-chargement du modèle ---------- */
 window.addEventListener("DOMContentLoaded", () => {
   try {
@@ -24,11 +21,6 @@ window.addEventListener("DOMContentLoaded", () => {
     if (info) {
       info.innerHTML = `✓ Modèle intégré chargé (${getModeleSizeKB()} Ko)`;
       info.style.color = "#2E7D32";
-    }
-    
-    if (isMobile) {
-      const hint = $("photo-hint");
-      if (hint) hint.innerHTML = "⚠️ Sur mobile, la sélection de dossier n'est pas supportée. Sélectionnez les photos manuellement ou utilisez un PC.";
     }
   } catch (err) { 
     console.error(err); 
@@ -54,18 +46,15 @@ fileInput.addEventListener("change", e => {
 dropZone.addEventListener("dragover", (e) => { 
   e.preventDefault(); 
   dropZone.style.background = "#E8F5E9"; 
-  dropZone.classList.add("dragover");
 });
 
 dropZone.addEventListener("dragleave", () => { 
   dropZone.style.background = "#F1F8E9"; 
-  dropZone.classList.remove("dragover");
 });
 
 dropZone.addEventListener("drop", (e) => {
   e.preventDefault(); 
   dropZone.style.background = "#F1F8E9"; 
-  dropZone.classList.remove("dragover");
   const file = e.dataTransfer.files[0];
   if (!file) return;
   if (!file.name.toLowerCase().endsWith(".csv")) {
@@ -82,7 +71,6 @@ const photoInput = $("file-photos");
 if (photoInput) {
   photoInput.addEventListener("change", e => {
     state.photoFiles = Array.from(e.target.files);
-    console.log("Nombre de fichiers photos :", state.photoFiles.length);
     log(`📷 ${state.photoFiles.length} fichiers photos chargés`);
   });
 }
@@ -203,7 +191,7 @@ function preparerParFCI(rows, reverse = false) {
 /* ============================================================
    PHOTOS
    ============================================================ */
-async function compressImage(file, maxDim = 150, quality = 0.3) {
+async function compressImage(file, maxDim = 400, quality = 0.7) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -222,27 +210,35 @@ async function compressImage(file, maxDim = 150, quality = 0.3) {
   });
 }
 
+// --- FONCTION DE RECHERCHE CORRIGÉE (PC) ---
 function findPhotosForChambre(ordre, ch1, codeInsee, photoFiles) {
   const photos = { MA: [], MB: [], MC: [], MD: [], MIRE_LG: [], MIRE_L: [], MIRE_P: [], BOITE: [], CASSETTE: [], VUE_ENSEMBLE: [], ETIQ_CABLE: [], ETIQ_BOITE: [] };
   
   const chStr = String(ch1).trim(); 
   const inseeStr = String(codeInsee).trim();
 
+  // On normalise le chemin en majuscules et avec des slashes uniformes
   const filesForCh = photoFiles.filter(f => {
-    let path = f.webkitRelativePath.replace(/\\/g, "/").toUpperCase();
-    const hasInsee = path.includes(inseeStr);
-    if (!hasInsee) return false;
+    const path = f.webkitRelativePath.replace(/\\/g, "/").toUpperCase();
+    
+    // Vérification de l'INSEE
+    if (!path.includes(inseeStr)) return false;
 
-    const pathAvecCH = path.split("/").map(part => " CH " + part).join("/");
+    // EXPRESSION RÉGULIÈRE STRICTE :
+    // On cherche "CH" suivi (ou non) d'un séparateur, puis du numéro exact.
+    // (?![0-9A-Za-z]) est la clé : cela empêche de matcher si un chiffre/lettre suit le numéro.
+    // Ainsi, CH 52 ne matchera pas CH 523.
     const regexChambre = new RegExp(`CH[\\s_-]*${chStr}(?![0-9A-Za-z])`, "i");
-
-    return regexChambre.test(pathAvecCH);
+    return regexChambre.test(path);
   });
 
   if (filesForCh.length > 0) {
-    console.log(`[TROUVÉ] Dossier pour CH ${chStr} (INSEE ${inseeStr}) :`, filesForCh[0].webkitRelativePath);
+    console.log(`[TROUVÉ] Dossier pour CH ${chStr} :`, filesForCh[0].webkitRelativePath);
+  } else {
+    console.log(`[NON TROUVÉ] Dossier pour CH ${chStr}`);
   }
 
+  // Tri des photos par sous-dossier
   for (const file of filesForCh) {
     const path = file.webkitRelativePath.toUpperCase().replace(/\\/g, "/");
     const inFolder = (folderName) => path.includes("/" + folderName + "/");
@@ -390,7 +386,7 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
     const diamB = safeInt(r["DIAMETRE B"]);
     if (diamB && DIAM_OFFSET[diamB]) writeSafe(`H${base + DIAM_OFFSET[diamB]}`, "X");
 
-    // --- 3. Photos (avec la méthode "Bottom-Right") ---
+    // --- 3. Photos ---
     if (photoFiles && photoFiles.length > 0) {
       const photos = findPhotosForChambre(r.ORDRE, r.CODE_CH1, r.CODE_CH2, photoFiles);
       const activeCols = hasBpe ? { ...colsBase, ...colsBoite } : colsBase;
@@ -404,13 +400,10 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
             const imgId = wb.addImage({ base64: base64, extension: 'jpeg' });
             const startRow = base + 2; 
             
-            // L'ASTUCE FINALE : Bottom-Right (br). On dit à Excel 
-            // "L'image commence ici, et se termine à cette cellule exacte".
-            // C'est ainsi qu'Excel stocke lui-même ses images, donc c'est le mieux lu par le mobile.
+            // Méthode d'insertion classique (fonctionne sur PC)
             ws.addImage(imgId, {
               tl: { col: colIdx - 1, row: startRow - 1 },
-              br: { col: colIdx, row: startRow + 6 },
-              editAs: 'oneCell' 
+              ext: { width: 130, height: 100 }
             });
 
             // Liseré vert
@@ -423,9 +416,6 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
               if (rLigne === startRow) cell.border.top = { style: "medium", color: { argb: "FF4CAF50" } };
               if (rLigne === endRow) cell.border.bottom = { style: "medium", color: { argb: "FF4CAF50" } };
             }
-
-            // Pause anti-crash
-            await new Promise(resolve => setTimeout(resolve, 10));
 
           } catch (err) {
             console.warn(`Erreur photo pour CH ${r.CODE_CH1} (${key})`, err);
