@@ -1,5 +1,5 @@
 /* ============================================================
-   Générateur Snake Excel par FCI (Recherche de dossier infaillible)
+   Générateur Snake Excel par FCI
    ============================================================ */
 
 const state = {
@@ -12,6 +12,9 @@ const state = {
 
 const $ = id => document.getElementById(id);
 
+/* ---------- Détection Mobile ---------- */
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 /* ---------- Pré-chargement du modèle ---------- */
 window.addEventListener("DOMContentLoaded", () => {
   try {
@@ -22,7 +25,15 @@ window.addEventListener("DOMContentLoaded", () => {
       info.innerHTML = `✓ Modèle intégré chargé (${getModeleSizeKB()} Ko)`;
       info.style.color = "#2E7D32";
     }
-  } catch (err) { console.error(err); }
+    
+    // Adapter le message d'aide pour les photos sur mobile
+    if (isMobile) {
+      const hint = $("photo-hint");
+      if (hint) hint.innerHTML = "⚠️ Sur mobile, la sélection de dossier n'est pas supportée. Sélectionnez les photos manuellement ou utilisez un PC.";
+    }
+  } catch (err) { 
+    console.error(err); 
+  }
   checkReady();
 });
 
@@ -41,58 +52,40 @@ fileInput.addEventListener("change", e => {
   }
 });
 
-dropZone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    dropZone.style.background = "#E8F5E9";
+dropZone.addEventListener("dragover", (e) => { 
+  e.preventDefault(); 
+  dropZone.style.background = "#E8F5E9"; 
+  dropZone.classList.add("dragover");
 });
 
-dropZone.addEventListener("dragleave", () => {
-    dropZone.style.background = "#F1F8E9";
+dropZone.addEventListener("dragleave", () => { 
+  dropZone.style.background = "#F1F8E9"; 
+  dropZone.classList.remove("dragover");
 });
 
 dropZone.addEventListener("drop", (e) => {
-
-    e.preventDefault();
-
-    dropZone.style.background = "#F1F8E9";
-
-    const file = e.dataTransfer.files[0];
-
-    if (!file) return;
-
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-        alert("Veuillez déposer un fichier CSV");
-        return;
-    }
-
-    state.csvFile = file;
-
-    csvInfo.textContent = `✓ ${file.name}`;
-    csvInfo.style.color = "#2E7D32";
-
-    checkReady();
+  e.preventDefault(); 
+  dropZone.style.background = "#F1F8E9"; 
+  dropZone.classList.remove("dragover");
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".csv")) {
+    alert("Veuillez déposer un fichier CSV");
+    return;
+  }
+  state.csvFile = file;
+  csvInfo.textContent = `✓ ${file.name}`;
+  csvInfo.style.color = "#2E7D32";
+  checkReady();
 });
 
 const photoInput = $("file-photos");
 if (photoInput) {
-
-    photoInput.addEventListener("change", e => {
-
-        state.photoFiles = Array.from(e.target.files);
-
-        console.log(
-            "Nombre de fichiers photos :",
-            state.photoFiles.length
-        );
-
-        state.photoFiles.slice(0, 20).forEach(f => {
-            console.log(f.webkitRelativePath);
-        });
-
-        log(`📷 ${state.photoFiles.length} fichiers photos chargés`);
-
-    });
-
+  photoInput.addEventListener("change", e => {
+    state.photoFiles = Array.from(e.target.files);
+    console.log("Nombre de fichiers photos :", state.photoFiles.length);
+    log(`📷 ${state.photoFiles.length} fichiers photos chargés`);
+  });
 }
 
 function checkReady() {
@@ -225,72 +218,30 @@ async function compressImage(file, maxDim = 250, quality = 0.5) {
       canvas.getContext("2d").drawImage(img, 0, 0, w, h);
       resolve(canvas.toDataURL("image/jpeg", quality));
     };
+    img.onerror = () => resolve(null);
     img.src = URL.createObjectURL(file);
   });
 }
 
-// --- FONCTION DE RECHERCHE CORRIGÉE ---
 function findPhotosForChambre(ordre, ch1, codeInsee, photoFiles) {
   const photos = { MA: [], MB: [], MC: [], MD: [], MIRE_LG: [], MIRE_L: [], MIRE_P: [], BOITE: [], CASSETTE: [], VUE_ENSEMBLE: [], ETIQ_CABLE: [], ETIQ_BOITE: [] };
   
-  // 1. On prépare les valeurs à chercher
-  const ordreStr = String(safeInt(ordre) ?? "ZZZ"); // ex: "1" ou "001"
-  const ordrePadded = ordreStr.padStart(3, "0");   // ex: "001"
-  const chStr = String(ch1);                       // ex: "596"
+  const chStr = String(ch1); 
+  const inseeStr = String(codeInsee);
 
-const inseeStr = String(codeInsee);
+  // Regex strict : CH 52 ne matchera pas CH 523.
+  // (?![0-9A-Za-z]) signifie "ne doit pas être suivi par un chiffre ou une lettre"
+  const regexChambre = new RegExp(`CH[\\s_-]*${chStr}(?![0-9A-Za-z])`, "i");
 
-const filesForCh = photoFiles.filter(f => {
-
-    const path = f.webkitRelativePath
-        .replace(/\\/g, "/")
-        .toUpperCase();
-
-    const hasChambre =
-        path.includes(`/CH ${chStr}/`) ||
-        path.includes(`/CH_${chStr}/`) ||
-        path.includes(`/CH-${chStr}/`);
-
-    const hasInsee =
-        path.includes(inseeStr);
-
+  const filesForCh = photoFiles.filter(f => {
+    const path = f.webkitRelativePath.replace(/\\/g, "/").toUpperCase();
+    
+    const hasChambre = regexChambre.test(path);
+    const hasInsee = path.includes(inseeStr);
+    
     return hasChambre && hasInsee;
-
-});
-
-filesForCh.forEach(f => {
-    console.log(
-        `[CH ${chStr}]`,
-        f.webkitRelativePath
-    );
-});
-
-console.log("======================================");
-console.log("[RECHERCHE PHOTO]");
-console.log("ORDRE =", ordre);
-console.log("ORDRE PAD =", ordrePadded);
-console.log("CHAMBRE =", chStr);
-console.log("NB FICHIERS =", filesForCh.length);
-
-if (filesForCh.length > 0) {
-
-  filesForCh.forEach(f => {
-    console.log("TROUVE :", f.webkitRelativePath);
   });
-
-} else {
-
-  console.log("AUCUN FICHIER CORRESPONDANT");
-
-  photoFiles.slice(0, 50).forEach(f => {
-    console.log("TEST :", f.webkitRelativePath);
-  });
-
-}
-
-console.log("================================================");
-
-  // 2. On trie les fichiers par sous-dossier
+  
   for (const file of filesForCh) {
     const path = file.webkitRelativePath.toUpperCase().replace(/\\/g, "/");
     const inFolder = (folderName) => path.includes("/" + folderName + "/");
@@ -304,19 +255,11 @@ console.log("================================================");
     if (inFolder("MIRE_P")) photos.MIRE_P.push(file);
     if (inFolder("BOITE")) photos.BOITE.push(file);
     if (inFolder("CASSETTE")) photos.CASSETTE.push(file);
-	if (inFolder("VUE_ENSEMBLE")) photos.VUE_ENSEMBLE.push(file);
-	if (inFolder("ETIQ_CABLE")) photos.ETIQ_CABLE.push(file);
-	if (inFolder("ETIQ_BOITE")) photos.ETIQ_BOITE.push(file);
+    if (inFolder("VUE_ENSEMBLE")) photos.VUE_ENSEMBLE.push(file);
+    if (inFolder("ETIQ_CABLE")) photos.ETIQ_CABLE.push(file);
+    if (inFolder("ETIQ_BOITE")) photos.ETIQ_BOITE.push(file);
   }
-  console.log(
-    `CHAMBRE ${chStr}`,
-    {
-        MA: photos.MA.map(f => f.name),
-        MB: photos.MB.map(f => f.name),
-        MC: photos.MC.map(f => f.name),
-        MD: photos.MD.map(f => f.name)
-    }
-);
+  
   return photos;
 }
 
@@ -331,7 +274,7 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
   const ws = wb.getWorksheet("SNK_1");
 
   // --- 1. Colonnes et Titres ---
-  const colsBase = { MA: 34, MB: 35, MC: 36, MD: 37 };
+  const colsBase = { MA: 34, MB: 35, MC: 36, MD: 37 }; 
   const colsBoite = { MIRE_LG: 38, MIRE_L: 39, MIRE_P: 40, BOITE: 41, CASSETTE: 42, VUE_ENSEMBLE: 43, ETIQ_CABLE: 44, ETIQ_BOITE: 45};
   const allCols = { ...colsBase, ...colsBoite };
   
@@ -348,7 +291,7 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
 
   // --- 2. Boucle Chambres ---
   for (let idx = 0; idx < lignes.length; idx++) {
-	  log(`📍 Chambre ${lignes[idx].CODE_CH1} en cours...`);
+    log(`📍 Chambre ${lignes[idx].CODE_CH1} en cours...`);
     const r = lignes[idx];
     const base = 4 + (idx * 19);
     const hasBpe = !!s(r.BPE);
@@ -385,201 +328,106 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
       }
     }
 
-if (hasBpe) {
-    writeSafe(`L${base}`, "M");
-}
+    if (hasBpe) {
+      writeSafe(`L${base}`, "M");
+    }
 
-const cellZ = ws.getCell(`Z${base + 2}`);
+    const cellZ = ws.getCell(`Z${base + 2}`);
+    let commentaire = "";
+    if (s(r.BPE)) {
+      commentaire = `BOITE : ${s(r.BPE)}\n` + `${s(r.COMMUNE)}\n` + `${fciVal}`;
+    } else {
+      commentaire = `${s(r.COMMUNE)}\n` + `${fciVal}`;
+    }
+    
+    if (cellZ.isMerged) {
+      const master = ws.getCell(cellZ.master.address);
+      master.value = commentaire;
+      master.font = { bold: true, size: 10 };
+      master.alignment = { vertical: "middle", horizontal: "center", wrapText: true, textRotation: 90 };
+    } else {
+      cellZ.value = commentaire;
+      cellZ.font = { bold: true, size: 10 };
+      cellZ.alignment = { vertical: "middle", horizontal: "center", wrapText: true, textRotation: 90 };
+    }
 
-let commentaire = "";
-
-if (s(r.BPE)) {
-
-    commentaire =
-        `BOITE : ${s(r.BPE)}\n` +
-        `${s(r.COMMUNE)}\n` +
-        `${fciVal}`;
-
-} else {
-
-    commentaire =
-        `${s(r.COMMUNE)}\n` +
-        `${fciVal}`;
-}
-
-if (cellZ.isMerged) {
-
-    const master = ws.getCell(cellZ.master.address);
-
-    master.value = commentaire;
-
-    master.font = {
-        bold: true,
-        size: 10
-    };
-
-    master.alignment = {
-        vertical: "middle",
-        horizontal: "center",
-        wrapText: true,
-        textRotation: 90
-    };
-
-} else {
-
-    cellZ.value = commentaire;
-
-    cellZ.font = {
-        bold: true,
-        size: 10
-    };
-
-    cellZ.alignment = {
-        vertical: "middle",
-        horizontal: "center",
-        wrapText: true,
-        textRotation: 90
-    };
-}
     writeSafe(`D${base + 6}`, "X");
     writeSafe(`X${base + 12}`, "X");
 
-if (s(r.MASQUE)) {
+    if (s(r.MASQUE)) {
+      const masqueTxt = s(r.MASQUE);
+      const masqueNorm = normaliser(masqueTxt);
 
-    const masqueTxt = s(r.MASQUE);
-    const masqueNorm = normaliser(masqueTxt);
-
-    if (
-        masqueNorm.includes("non empruntee") ||
-        masqueNorm.includes("non empruntée")
-    ) {
-
-        // Chambre non empruntée
-writeSafe(`H${base + 14}`, "X");
-
-const cellObs = ws.getCell(`Z${base}`);
-
-if (cellObs.isMerged) {
-    ws.getCell(cellObs.master.address).value =
-        masqueTxt.toUpperCase().replace(/\s+/g, "\n");
-} else {
-    cellObs.value =
-        masqueTxt.toUpperCase().replace(/\s+/g, "\n");
-}
-
-    } else {
-
+      if (masqueNorm.includes("non empruntee") || masqueNorm.includes("non empruntée")) {
+        writeSafe(`H${base + 14}`, "X");
+        const cellObs = ws.getCell(`Z${base}`);
+        if (cellObs.isMerged) ws.getCell(cellObs.master.address).value = masqueTxt.toUpperCase().replace(/\s+/g, "\n");
+        else cellObs.value = masqueTxt.toUpperCase().replace(/\s+/g, "\n");
+      } else {
         const [l, n] = splitMasque(masqueTxt);
-
         if (n !== null) {
-
-            // Cas normal A1, B2...
-            writeSafe(`B${base + 3}`, l);
-            writeSafe(`D${base + 3}`, n);
-
+          writeSafe(`B${base + 3}`, l);
+          writeSafe(`D${base + 3}`, n);
         } else {
-
-            // Tout texte libre = parcours non conforme
-writeSafe(`O${base + 14}`, "X");
-
-const cellObs = ws.getCell(`Z${base}`);
-
-if (cellObs.isMerged) {
-    ws.getCell(cellObs.master.address).value =
-        masqueTxt.toUpperCase().replace(/\s+/g, "\n");
-} else {
-    cellObs.value =
-        masqueTxt.toUpperCase().replace(/\s+/g, "\n");
-}
+          writeSafe(`O${base + 14}`, "X");
+          const cellObs = ws.getCell(`Z${base}`);
+          if (cellObs.isMerged) ws.getCell(cellObs.master.address).value = masqueTxt.toUpperCase().replace(/\s+/g, "\n");
+          else cellObs.value = masqueTxt.toUpperCase().replace(/\s+/g, "\n");
         }
+      }
     }
-}
+
     if (s(r["MASQUE B"])) {
       const [l, n] = splitMasque(r["MASQUE B"]);
       writeSafe(`B${base + 16}`, l);
       if (n !== null) writeSafe(`D${base + 16}`, n);
     }
+    
     const diam = safeInt(r.DIAMETRE);
     if (diam && DIAM_OFFSET[diam]) writeSafe(`H${base + DIAM_OFFSET[diam]}`, "X");
+    
     const diamB = safeInt(r["DIAMETRE B"]);
     if (diamB && DIAM_OFFSET[diamB]) writeSafe(`H${base + DIAM_OFFSET[diamB]}`, "X");
 
     // --- 3. Photos ---
     if (photoFiles && photoFiles.length > 0) {
-console.log(
-  `[PHOTO] FCI=${fciVal} | ORDRE=${r.ORDRE} | CH=${r.CODE_CH1} | REF=${r.REF_CHAMBR}`
-);
-
-log(`🔍 Recherche photos chambre ${r.CODE_CH1}`);
-const photos = findPhotosForChambre(
-    r.ORDRE,
-    r.CODE_CH1,
-    r.CODE_CH2,
-    photoFiles
-);
-
-console.log(
-  `[RESULTAT] CH=${r.CODE_CH1}`,
-  {
-    MA: photos.MA.length,
-    MB: photos.MB.length,
-    MC: photos.MC.length,
-    MD: photos.MD.length,
-    MIRE_LG: photos.MIRE_LG.length,
-    MIRE_L: photos.MIRE_L.length,
-    MIRE_P: photos.MIRE_P.length,
-    BOITE: photos.BOITE.length,
-    CASSETTE: photos.CASSETTE.length
-  }
-);
-
+      const photos = findPhotosForChambre(r.ORDRE, r.CODE_CH1, r.CODE_CH2, photoFiles);
       const activeCols = hasBpe ? { ...colsBase, ...colsBoite } : colsBase;
 
       for (const [key, colIdx] of Object.entries(activeCols)) {
         if (photos[key] && photos[key].length > 0) {
+          try {
+            const base64 = await compressImage(photos[key][0]);
+            if (!base64) continue; // Si l'image a planté
 
-  console.log(
-    `[INSERTION] CH=${r.CODE_CH1} TYPE=${key} PHOTO=${photos[key][0].name}`
-  );
-  if (!photos[key] || photos[key].length === 0) {
+            const imgId = wb.addImage({ base64: base64, extension: 'jpeg' });
+            const startRow = base + 2; 
+            
+            ws.addImage(imgId, {
+              tl: { col: colIdx - 1, row: startRow - 1 },
+              ext: { width: 130, height: 100 }
+            });
 
-    const txtCell = ws.getCell(base + 5, colIdx);
+            const endRow = startRow + 6; 
+            for (let rLigne = startRow; rLigne <= endRow; rLigne++) {
+              const cell = ws.getCell(rLigne, colIdx);
+              if (!cell.border) cell.border = {};
+              cell.border.left = { style: "medium", color: { argb: "FF4CAF50" } };
+              cell.border.right = { style: "medium", color: { argb: "FF4CAF50" } };
+              if (rLigne === startRow) cell.border.top = { style: "medium", color: { argb: "FF4CAF50" } };
+              if (rLigne === endRow) cell.border.bottom = { style: "medium", color: { argb: "FF4CAF50" } };
+            }
 
-    txtCell.value = "Pas de photo";
+            // Pause pour éviter le plantage mémoire sur mobile
+            await new Promise(resolve => setTimeout(resolve, 10));
 
-    txtCell.alignment = {
-        horizontal: "center",
-        vertical: "middle"
-    };
-
-    txtCell.font = {
-        italic: true,
-        color: { argb: "FF808080" }
-    };
-}
-          const base64 = await compressImage(photos[key][0]);
-          const imgId = wb.addImage({ base64: base64, extension: 'jpeg' });
-          
-          const startRow = base + 2; 
-          ws.addImage(imgId, {
-            tl: { col: colIdx - 1, row: startRow - 1 },
-            ext: { width: 130, height: 100 }
-          });
-
-          const endRow = startRow + 6; 
-          for (let rLigne = startRow; rLigne <= endRow; rLigne++) {
-            const cell = ws.getCell(rLigne, colIdx);
-            if (!cell.border) cell.border = {};
-            cell.border.left = { style: "medium", color: { argb: "FF4CAF50" } };
-            cell.border.right = { style: "medium", color: { argb: "FF4CAF50" } };
-            if (rLigne === startRow) cell.border.top = { style: "medium", color: { argb: "FF4CAF50" } };
-            if (rLigne === endRow) cell.border.bottom = { style: "medium", color: { argb: "FF4CAF50" } };
+          } catch (err) {
+            console.warn(`Erreur photo pour CH ${r.CODE_CH1} (${key})`, err);
           }
         }
       }
-     }
     }
-
+  }
 
   // --- 4. Totaux M2 ---
   const m2Cell = ws.getCell("M2");
