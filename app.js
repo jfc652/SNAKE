@@ -1,5 +1,5 @@
 /* ============================================================
-   Générateur Snake Excel par FCI - Version Mobile Friendly
+   Générateur Snake Excel par FCI - Version Finale (Mobile)
    ============================================================ */
 
 const state = {
@@ -203,7 +203,6 @@ function preparerParFCI(rows, reverse = false) {
 /* ============================================================
    PHOTOS
    ============================================================ */
-// Compression ultra-légère pour mobile (150px max, qualité 0.3)
 async function compressImage(file, maxDim = 150, quality = 0.3) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -242,8 +241,6 @@ function findPhotosForChambre(ordre, ch1, codeInsee, photoFiles) {
 
   if (filesForCh.length > 0) {
     console.log(`[TROUVÉ] Dossier pour CH ${chStr} (INSEE ${inseeStr}) :`, filesForCh[0].webkitRelativePath);
-  } else {
-    console.log(`[NON TROUVÉ] Aucun dossier pour CH ${chStr} (INSEE ${inseeStr})`);
   }
 
   for (const file of filesForCh) {
@@ -393,7 +390,7 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
     const diamB = safeInt(r["DIAMETRE B"]);
     if (diamB && DIAM_OFFSET[diamB]) writeSafe(`H${base + DIAM_OFFSET[diamB]}`, "X");
 
-    // --- 3. Photos (avec editAs: 'oneCell' pour le mobile) ---
+    // --- 3. Photos (avec la méthode "Bottom-Right") ---
     if (photoFiles && photoFiles.length > 0) {
       const photos = findPhotosForChambre(r.ORDRE, r.CODE_CH1, r.CODE_CH2, photoFiles);
       const activeCols = hasBpe ? { ...colsBase, ...colsBoite } : colsBase;
@@ -407,11 +404,12 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
             const imgId = wb.addImage({ base64: base64, extension: 'jpeg' });
             const startRow = base + 2; 
             
-            // L'ASTUCE POUR LE MOBILE :
-            // editAs: 'oneCell' permet de lier l'image à la cellule.
+            // L'ASTUCE FINALE : Bottom-Right (br). On dit à Excel 
+            // "L'image commence ici, et se termine à cette cellule exacte".
+            // C'est ainsi qu'Excel stocke lui-même ses images, donc c'est le mieux lu par le mobile.
             ws.addImage(imgId, {
               tl: { col: colIdx - 1, row: startRow - 1 },
-              ext: { width: 120, height: 90 },
+              br: { col: colIdx, row: startRow + 6 },
               editAs: 'oneCell' 
             });
 
