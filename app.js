@@ -26,7 +26,6 @@ window.addEventListener("DOMContentLoaded", () => {
       info.style.color = "#2E7D32";
     }
     
-    // Adapter le message d'aide pour les photos sur mobile
     if (isMobile) {
       const hint = $("photo-hint");
       if (hint) hint.innerHTML = "⚠️ Sur mobile, la sélection de dossier n'est pas supportée. Sélectionnez les photos manuellement ou utilisez un PC.";
@@ -226,22 +225,35 @@ async function compressImage(file, maxDim = 250, quality = 0.5) {
 function findPhotosForChambre(ordre, ch1, codeInsee, photoFiles) {
   const photos = { MA: [], MB: [], MC: [], MD: [], MIRE_LG: [], MIRE_L: [], MIRE_P: [], BOITE: [], CASSETTE: [], VUE_ENSEMBLE: [], ETIQ_CABLE: [], ETIQ_BOITE: [] };
   
-  const chStr = String(ch1); 
-  const inseeStr = String(codeInsee);
-
-  // Regex strict : CH 52 ne matchera pas CH 523.
-  // (?![0-9A-Za-z]) signifie "ne doit pas être suivi par un chiffre ou une lettre"
-  const regexChambre = new RegExp(`CH[\\s_-]*${chStr}(?![0-9A-Za-z])`, "i");
+  const chStr = String(ch1).trim(); 
+  const inseeStr = String(codeInsee).trim();
 
   const filesForCh = photoFiles.filter(f => {
-    const path = f.webkitRelativePath.replace(/\\/g, "/").toUpperCase();
+    // 1. On récupère le chemin et on le nettoie (majuscules, slashes uniformes)
+    let path = f.webkitRelativePath.replace(/\\/g, "/").toUpperCase();
     
-    const hasChambre = regexChambre.test(path);
+    // 2. On vérifie si l'INSEE est présent (pour la commune)
     const hasInsee = path.includes(inseeStr);
-    
-    return hasChambre && hasInsee;
+    if (!hasInsee) return false;
+
+    // 3. L'ASTUCE DU "CH VIRTUEL" : On ajoute " CH " devant chaque segment du chemin
+    // Exemple : "/001 - 586/PBC_PLA91/MA/photo.jpg" devient "/ CH 001 - 586/ CH PBC_PLA91/ CH MA/ CH photo.jpg"
+    const pathAvecCH = path.split("/").map(part => " CH " + part).join("/");
+
+    // 4. Regex stricte : CH 52 ne matchera pas CH 523
+    const regexChambre = new RegExp(`CH[\\s_-]*${chStr}(?![0-9A-Za-z])`, "i");
+
+    // 5. On teste si le chemin virtuel contient notre chambre
+    return regexChambre.test(pathAvecCH);
   });
-  
+
+  if (filesForCh.length > 0) {
+    console.log(`[TROUVÉ] Dossier pour CH ${chStr} (INSEE ${inseeStr}) :`, filesForCh[0].webkitRelativePath);
+  } else {
+    console.log(`[NON TROUVÉ] Aucun dossier pour CH ${chStr} (INSEE ${inseeStr})`);
+  }
+
+  // 6. On trie les fichiers par sous-dossier (MA, MB, etc.)
   for (const file of filesForCh) {
     const path = file.webkitRelativePath.toUpperCase().replace(/\\/g, "/");
     const inFolder = (folderName) => path.includes("/" + folderName + "/");
@@ -398,7 +410,7 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
         if (photos[key] && photos[key].length > 0) {
           try {
             const base64 = await compressImage(photos[key][0]);
-            if (!base64) continue; // Si l'image a planté
+            if (!base64) continue;
 
             const imgId = wb.addImage({ base64: base64, extension: 'jpeg' });
             const startRow = base + 2; 
@@ -418,7 +430,6 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
               if (rLigne === endRow) cell.border.bottom = { style: "medium", color: { argb: "FF4CAF50" } };
             }
 
-            // Pause pour éviter le plantage mémoire sur mobile
             await new Promise(resolve => setTimeout(resolve, 10));
 
           } catch (err) {
