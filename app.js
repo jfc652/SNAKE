@@ -1,5 +1,5 @@
 /* ============================================================
-   Générateur Snake Excel par FCI
+   Générateur Snake Excel par FCI - Version Mobile Friendly
    ============================================================ */
 
 const state = {
@@ -203,7 +203,8 @@ function preparerParFCI(rows, reverse = false) {
 /* ============================================================
    PHOTOS
    ============================================================ */
-async function compressImage(file, maxDim = 250, quality = 0.5) {
+// Compression ultra-légère pour mobile (150px max, qualité 0.3)
+async function compressImage(file, maxDim = 150, quality = 0.3) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -229,21 +230,13 @@ function findPhotosForChambre(ordre, ch1, codeInsee, photoFiles) {
   const inseeStr = String(codeInsee).trim();
 
   const filesForCh = photoFiles.filter(f => {
-    // 1. On récupère le chemin et on le nettoie (majuscules, slashes uniformes)
     let path = f.webkitRelativePath.replace(/\\/g, "/").toUpperCase();
-    
-    // 2. On vérifie si l'INSEE est présent (pour la commune)
     const hasInsee = path.includes(inseeStr);
     if (!hasInsee) return false;
 
-    // 3. L'ASTUCE DU "CH VIRTUEL" : On ajoute " CH " devant chaque segment du chemin
-    // Exemple : "/001 - 586/PBC_PLA91/MA/photo.jpg" devient "/ CH 001 - 586/ CH PBC_PLA91/ CH MA/ CH photo.jpg"
     const pathAvecCH = path.split("/").map(part => " CH " + part).join("/");
-
-    // 4. Regex stricte : CH 52 ne matchera pas CH 523
     const regexChambre = new RegExp(`CH[\\s_-]*${chStr}(?![0-9A-Za-z])`, "i");
 
-    // 5. On teste si le chemin virtuel contient notre chambre
     return regexChambre.test(pathAvecCH);
   });
 
@@ -253,7 +246,6 @@ function findPhotosForChambre(ordre, ch1, codeInsee, photoFiles) {
     console.log(`[NON TROUVÉ] Aucun dossier pour CH ${chStr} (INSEE ${inseeStr})`);
   }
 
-  // 6. On trie les fichiers par sous-dossier (MA, MB, etc.)
   for (const file of filesForCh) {
     const path = file.webkitRelativePath.toUpperCase().replace(/\\/g, "/");
     const inFolder = (folderName) => path.includes("/" + folderName + "/");
@@ -401,7 +393,7 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
     const diamB = safeInt(r["DIAMETRE B"]);
     if (diamB && DIAM_OFFSET[diamB]) writeSafe(`H${base + DIAM_OFFSET[diamB]}`, "X");
 
-    // --- 3. Photos ---
+    // --- 3. Photos (avec editAs: 'oneCell' pour le mobile) ---
     if (photoFiles && photoFiles.length > 0) {
       const photos = findPhotosForChambre(r.ORDRE, r.CODE_CH1, r.CODE_CH2, photoFiles);
       const activeCols = hasBpe ? { ...colsBase, ...colsBoite } : colsBase;
@@ -415,11 +407,15 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
             const imgId = wb.addImage({ base64: base64, extension: 'jpeg' });
             const startRow = base + 2; 
             
+            // L'ASTUCE POUR LE MOBILE :
+            // editAs: 'oneCell' permet de lier l'image à la cellule.
             ws.addImage(imgId, {
               tl: { col: colIdx - 1, row: startRow - 1 },
-              ext: { width: 130, height: 100 }
+              ext: { width: 120, height: 90 },
+              editAs: 'oneCell' 
             });
 
+            // Liseré vert
             const endRow = startRow + 6; 
             for (let rLigne = startRow; rLigne <= endRow; rLigne++) {
               const cell = ws.getCell(rLigne, colIdx);
@@ -430,6 +426,7 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
               if (rLigne === endRow) cell.border.bottom = { style: "medium", color: { argb: "FF4CAF50" } };
             }
 
+            // Pause anti-crash
             await new Promise(resolve => setTimeout(resolve, 10));
 
           } catch (err) {
