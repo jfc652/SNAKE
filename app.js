@@ -1,5 +1,5 @@
 /* ============================================================
-   Générateur Snake Excel par FCI - Version PC Finale
+   Générateur Snake Excel par FCI - Version Corrigée (PC)
    ============================================================ */
 
 const state = {
@@ -22,9 +22,7 @@ window.addEventListener("DOMContentLoaded", () => {
       info.innerHTML = `✓ Modèle intégré chargé (${getModeleSizeKB()} Ko)`;
       info.style.color = "#2E7D32";
     }
-  } catch (err) { 
-    console.error(err); 
-  }
+  } catch (err) { console.error(err); }
   checkReady();
 });
 
@@ -43,24 +41,12 @@ fileInput.addEventListener("change", e => {
   }
 });
 
-dropZone.addEventListener("dragover", (e) => { 
-  e.preventDefault(); 
-  dropZone.style.background = "#E8F5E9"; 
-});
-
-dropZone.addEventListener("dragleave", () => { 
-  dropZone.style.background = "#F1F8E9"; 
-});
-
+dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.style.background = "#E8F5E9"; });
+dropZone.addEventListener("dragleave", () => { dropZone.style.background = "#F1F8E9"; });
 dropZone.addEventListener("drop", (e) => {
-  e.preventDefault(); 
-  dropZone.style.background = "#F1F8E9"; 
+  e.preventDefault(); dropZone.style.background = "#F1F8E9";
   const file = e.dataTransfer.files[0];
-  if (!file) return;
-  if (!file.name.toLowerCase().endsWith(".csv")) {
-    alert("Veuillez déposer un fichier CSV");
-    return;
-  }
+  if (!file || !file.name.toLowerCase().endsWith(".csv")) return;
   state.csvFile = file;
   csvInfo.textContent = `✓ ${file.name}`;
   csvInfo.style.color = "#2E7D32";
@@ -191,7 +177,8 @@ function preparerParFCI(rows, reverse = false) {
 /* ============================================================
    PHOTOS
    ============================================================ */
-async function compressImage(file, maxDim = 400, quality = 0.7) {
+// Compression avec gestion d'erreur (onerror) pour les formats exotiques (HEIC)
+async function compressImage(file, maxDim = 250, quality = 0.5) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -205,6 +192,7 @@ async function compressImage(file, maxDim = 400, quality = 0.7) {
       canvas.getContext("2d").drawImage(img, 0, 0, w, h);
       resolve(canvas.toDataURL("image/jpeg", quality));
     };
+    // Si l'image ne peut pas être lue (HEIC, corrompue...), on renvoie null au lieu de bloquer
     img.onerror = () => resolve(null);
     img.src = URL.createObjectURL(file);
   });
@@ -226,12 +214,13 @@ function findPhotosForChambre(ordre, ch1, codeInsee, photoFiles) {
 
     // EXPRESSION RÉGULIÈRE STRICTE :
     // On cherche "CH" suivi (ou non) d'un séparateur, puis du numéro exact.
-    // (?![0-9A-Za-z]) est la clé : cela empêche de matcher si un chiffre/lettre suit le numéro.
-    // Ainsi, CH 52 ne matchera pas CH 523.
+    // (?![0-9A-Za-z]) empêche de matcher si un chiffre/lettre suit le numéro.
+    // Ainsi, CH 5 ne matchera pas CH 59 ou CH 596.
     const regexChambre = new RegExp(`CH[\\s_-]*${chStr}(?![0-9A-Za-z])`, "i");
     return regexChambre.test(path);
   });
 
+  // Debug console
   if (filesForCh.length > 0) {
     console.log(`[TROUVÉ] Dossier pour CH ${chStr} :`, filesForCh[0].webkitRelativePath);
   } else {
@@ -392,10 +381,19 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
       const activeCols = hasBpe ? { ...colsBase, ...colsBoite } : colsBase;
 
       for (const [key, colIdx] of Object.entries(activeCols)) {
+        // On vérifie si une photo existe pour cette catégorie
         if (photos[key] && photos[key].length > 0) {
           try {
             const base64 = await compressImage(photos[key][0]);
-            if (!base64) continue;
+            
+            // Si l'image n'a pas pu être lue (HEIC, etc.), on affiche "Pas de photo"
+            if (!base64) {
+              const txtCell = ws.getCell(base + 5, colIdx);
+              txtCell.value = "Format invalide";
+              txtCell.font = { italic: true, color: { argb: "FF808080" }, size: 9 };
+              txtCell.alignment = { horizontal: "center", vertical: "middle" };
+              continue;
+            }
 
             const imgId = wb.addImage({ base64: base64, extension: 'jpeg' });
             const startRow = base + 2; 
@@ -418,8 +416,15 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
             }
 
           } catch (err) {
-            console.warn(`Erreur photo pour CH ${r.CODE_CH1} (${key})`, err);
+            console.warn(`Erreur insertion photo CH ${r.CODE_CH1} (${key})`, err);
           }
+        } 
+        // Si aucune photo n'a été trouvée pour cette catégorie
+        else {
+          const txtCell = ws.getCell(base + 5, colIdx);
+          txtCell.value = "Pas de photo";
+          txtCell.font = { italic: true, color: { argb: "FF808080" }, size: 9 };
+          txtCell.alignment = { horizontal: "center", vertical: "middle" };
         }
       }
     }
