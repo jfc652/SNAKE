@@ -420,7 +420,12 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
     // --- 3. Photos ---
     if (photoIndex && photoIndex.length > 0) {
       const photos = findPhotosForChambre(r.ORDRE, r.CODE_CH1, photoIndex);
-      const activeCols = hasBpe ? allCols : colsBase;
+	const activeCols = hasBpe
+	? allCols
+	: {
+		...colsBase,
+		VUE_ENSEMBLE: colsBoite.VUE_ENSEMBLE
+		};
       const startRow = base + 2;
       const endRow = startRow + 6;
 
