@@ -10,7 +10,7 @@ const state = {
   modeleBuffer: null,
   photoFiles: [],
   photoIndex: [],
-  chambresDisponibles: [], // Ajouté pour le menu déroulant de la caméra
+  chambresDisponibles: [],
 };
 
 const $ = id => document.getElementById(id);
@@ -46,13 +46,8 @@ fileInput.addEventListener("change", e => {
   if (e.target.files[0]) setCsv(e.target.files[0]);
 });
 
-dropZone.addEventListener("dragover", e => {
-  e.preventDefault();
-  dropZone.style.background = "#E8F5E9";
-});
-dropZone.addEventListener("dragleave", () => {
-  dropZone.style.background = "#F1F8E9";
-});
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.style.background = "#E8F5E9"; });
+dropZone.addEventListener("dragleave", () => { dropZone.style.background = "#F1F8E9"; });
 dropZone.addEventListener("drop", e => {
   e.preventDefault();
   dropZone.style.background = "#F1F8E9";
@@ -133,6 +128,35 @@ function parseCSVFile(file) {
 /* ============================================================
    GROUPEMENT PAR FCI
    ============================================================ */
+// CORRECTION 1 : Extraction des chambres pour le menu déroulant
+async function chargerChambresDansState() {
+  if (!state.csvFile) return;
+  if (state.chambresDisponibles.length > 0) return; // Déjà chargé
+  try {
+    const rows = await parseCSVFile(state.csvFile);
+    const cols = Object.keys(rows[0]);
+    const cFci = trouverColonne(cols, "FCI", "N°_FCI") || trouverColonneFuzzy(cols, "fci");
+    const cCh1 = trouverColonne(cols, "CODE_CH1", "CODE CH1");
+    const cCh2 = trouverColonne(cols, "CODE_CH2", "INSEE");
+    const cOrdre = trouverColonne(cols, "ORDRE");
+    const cCommune = trouverColonne(cols, "COMMUNE");
+    
+    state.chambresDisponibles = [];
+    rows.forEach(r => {
+        const ch1 = s(r[cCh1]);
+        if (!ch1) return;
+        state.chambresDisponibles.push({
+            label: `CH ${ch1} (${s(r[cCommune])}) - Ordre ${s(r[cOrdre])}`,
+            CODE_CH1: ch1,
+            CODE_CH2: s(r[cCh2]),
+            ORDRE: s(r[cOrdre]),
+            FCI: s(r[cFci]),
+            COMMUNE: s(r[cCommune])
+        });
+    });
+  } catch(e) { console.error(e); }
+}
+
 function preparerParFCI(rows, reverse = false) {
   const cols = Object.keys(rows[0]);
   const cOp = trouverColonne(cols, "OP");
@@ -151,7 +175,6 @@ function preparerParFCI(rows, reverse = false) {
 
   const groupes = {};
   const ordreGroupes = [];
-  state.chambresDisponibles = []; // Réinitialisation
 
   rows.forEach(r => {
     if (s(r[cOp]) && s(r[cOp]).toUpperCase() !== "FT") return;
@@ -167,12 +190,6 @@ function preparerParFCI(rows, reverse = false) {
 
     if (!groupes[fciVal]) { groupes[fciVal] = []; ordreGroupes.push(fciVal); }
     groupes[fciVal].push(obj);
-    
-    // Remplissage de la liste pour la caméra
-    if (obj.CODE_CH1) {
-      const label = `CH ${obj.CODE_CH1} (${obj.COMMUNE}) - Ordre ${obj.ORDRE}`;
-      state.chambresDisponibles.push({ label, ...obj });
-    }
   });
 
   for (const fci of ordreGroupes) {
@@ -190,7 +207,7 @@ function preparerParFCI(rows, reverse = false) {
    ============================================================ */
 const TYPES = ["MA", "MB", "MC", "MD", "MIRE_LG", "MIRE_L", "MIRE_P", "BOITE", "CASSETTE", "VUE_ENSEMBLE", "ETIQ_CABLE", "ETIQ_BOITE"];
 const ALIAS = { MIRE: "MIRE_LG" };
-const photoCache = new Map(); // File (ou stub ZIP) -> base64 compressé
+const photoCache = new Map();
 
 function indexPhotos(files) {
   const idx = [];
@@ -201,8 +218,12 @@ function indexPhotos(files) {
       .split("/")
       .map(x => x.trim().toUpperCase())
       .filter(Boolean);
-    segs.pop();                              // nom du fichier
-    const raw = segs[segs.length - 1];       // dossier direct = type
+    
+    // Si le ZIP contient un dossier racine, on le supprime virtuellement
+    if (segs.length > 2 && segs[0].startsWith("PHOTO")) segs.shift();
+    
+    segs.pop();
+    const raw = segs[segs.length - 1];
     const type = ALIAS[raw] || raw;
     if (!TYPES.includes(type)) continue;
     idx.push({ file: f, type, parents: segs.slice(0, -1) });
@@ -278,20 +299,30 @@ if (zipInput) {
 
       const stubs = [];
       let n = 0;
+      // CORRECTION 2 : On pré-compresse TOUT de suite pour ne pas saturer
       for (const entry of entries) {
         const blob = await entry.async("blob");
-        const real = new File([blob], entry.name.split("/").pop(), { type: blob.type || "image/jpeg" });
-        const b64 = await compressedBase64(real); // compresse tout de suite
+        const realFile = new File([blob], entry.name.split("/").pop(), { type: blob.type || "image/jpeg" });
+        
+        // On compresse en base64 immédiatement
+        const b64 = await compressedBase64(realFile); 
         if (!b64) continue;
-        const stub = { name: real.name, webkitRelativePath: entry.name };
+        
+        // On crée un "stub" qui garde le chemin original
+        const stub = { name: realFile.name, webkitRelativePath: entry.name };
+        
+        // On stocke le base64 dans le cache en utilisant le stub comme clé
         photoCache.set(stub, b64);
-        photoCache.delete(real);
         stubs.push(stub);
-        if (++n % 20 === 0) log(`   ${n}/${entries.length} photos...`);
+        
+        if (++n % 20 === 0) log(`   ${n}/${entries.length} photos traitées...`);
       }
-      state.photoFiles = stubs;
-      state.photoIndex = indexPhotos(stubs);
-      log(`📷 ${state.photoIndex.length} photos indexées (ZIP)`, "ok");
+      
+      // On ajoute ces nouveaux fichiers à l'index général
+      state.photoFiles = state.photoFiles.concat(stubs);
+      state.photoIndex = indexPhotos(state.photoFiles);
+      
+      log(`📷 ${state.photoIndex.length} photos indexées au total (ZIP ajouté)`, "ok");
     } catch (err) {
       console.error(err);
       log("❌ ZIP illisible : " + err.message, "err");
@@ -301,7 +332,7 @@ if (zipInput) {
 }
 
 /* ============================================================
-   CAMÉRA (Ajouté)
+   CAMÉRA
    ============================================================ */
 const cameraDialog = $("camera-dialog");
 const btnCamera = $("btn-camera");
@@ -312,9 +343,12 @@ const selChambre = $("sel-chambre");
 const selType = $("sel-type");
 
 if (btnCamera) {
-  btnCamera.addEventListener("click", () => {
+  btnCamera.addEventListener("click", async () => {
+    // CORRECTION 1 : On charge le CSV à la volée si ce n'est pas déjà fait
+    await chargerChambresDansState();
+    
     if (state.chambresDisponibles.length === 0) {
-      alert("Veuillez d'abord sélectionner un fichier CSV (étape 1).");
+      alert("Veuillez d'abord sélectionner un fichier CSV valide.");
       return;
     }
     selChambre.innerHTML = state.chambresDisponibles
@@ -340,27 +374,20 @@ if (cameraInput) {
     const chambre = state.chambresDisponibles[selChambre.value];
     const type = selType.value;
 
-    // Création du chemin virtuel pour que indexPhotos le comprenne
-    // Exemple : "001/CH 596/MA/photo.jpg"
     const dossierChambre = `CH ${chambre.CODE_CH1}`;
     const dossierOrdre = String(safeInt(chambre.ORDRE) ?? "ZZZ").padStart(3, "0");
     const webkitRelativePath = `${dossierOrdre}/${dossierChambre}/${type}/${file.name}`;
 
-    // On crée un objet "stub" qui imite un fichier issu d'un dossier
     const stub = { name: file.name, webkitRelativePath: webkitRelativePath };
     
-    // On compresse et on met en cache immédiatement
     const b64 = await compressedBase64(file);
     if (b64) {
       photoCache.set(stub, b64);
-      
-      // On ajoute à l'index existant
       state.photoFiles.push(stub);
       state.photoIndex = indexPhotos(state.photoFiles);
-      
       log(`📸 Photo ajoutée : CH ${chambre.CODE_CH1} → ${type}`, "ok");
     } else {
-      alert("Format d'image non supporté (essayez de convertir en JPEG).");
+      alert("Format d'image non supporté.");
     }
     
     cameraDialog.close();
@@ -378,7 +405,6 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
   await wb.xlsx.load(modeleBuffer);
   const ws = wb.getWorksheet("SNK_1");
 
-  // --- 1. Colonnes et titres ---
   const colsBase = { MA: 34, MB: 35, MC: 36, MD: 37 };
   const colsBoite = { MIRE_LG: 38, MIRE_L: 39, MIRE_P: 40, BOITE: 41, CASSETTE: 42, VUE_ENSEMBLE: 43, ETIQ_CABLE: 44, ETIQ_BOITE: 45 };
   const allCols = { ...colsBase, ...colsBoite };
@@ -411,17 +437,14 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
 
   const green = { style: "medium", color: { argb: "FF4CAF50" } };
 
-  // --- 2. Boucle chambres ---
   for (let idx = 0; idx < lignes.length; idx++) {
     const r = lignes[idx];
     const base = 4 + (idx * 19);
     const hasBpe = !!s(r.BPE);
 
-    // Textes
     if (s(r.REF_CHAMBR)) writeSafe(`M${base}`, s(r.REF_CHAMBR));
     if (s(r.CODE_CH1)) writeSafe(`R${base}`, s(r.CODE_CH1));
 
-    // Longueur (T) et formule M2
     const etiq = s(r.ETIQUETTE_2);
     if (etiq) {
       const tCell = ws.getCell(`T${base + 3}`);
@@ -438,7 +461,6 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
 
     if (hasBpe) writeSafe(`L${base}`, "M");
 
-    // Commentaire vertical (BPE / commune / FCI)
     const commentaire = hasBpe
       ? `BOITE : ${s(r.BPE)}\n${s(r.COMMUNE)}\n${fciVal}`
       : `${s(r.COMMUNE)}\n${fciVal}`;
@@ -451,7 +473,6 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
     writeSafe(`D${base + 6}`, "X");
     writeSafe(`X${base + 12}`, "X");
 
-    // Masque haut
     if (s(r.MASQUE)) {
       const masqueTxt = s(r.MASQUE);
       const masqueNorm = normaliser(masqueTxt);
@@ -472,14 +493,12 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
       }
     }
 
-    // Masque bas
     if (s(r["MASQUE B"])) {
       const [l, n] = splitMasque(r["MASQUE B"]);
       writeSafe(`B${base + 16}`, l);
       if (n !== null) writeSafe(`D${base + 16}`, n);
     }
 
-    // Diamètres
     const diam = safeInt(r.DIAMETRE);
     if (diam && DIAM_OFFSET[diam]) writeSafe(`H${base + DIAM_OFFSET[diam]}`, "X");
     const diamB = safeInt(r["DIAMETRE B"]);
@@ -508,6 +527,7 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
           continue;
         }
 
+        // Ici, compressedBase64 va utiliser le cache si c'est un stub de ZIP
         const b64 = await compressedBase64(list[0]);
         if (!b64) continue;
 
@@ -529,7 +549,6 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
     }
   }
 
-  // --- 4. Totaux M2 ---
   const m2Cell = ws.getCell("M2");
   const m2Master = m2Cell.isMerged ? ws.getCell(m2Cell.master.address) : m2Cell;
   if (formuleM2.length > 0) {
