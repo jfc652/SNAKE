@@ -1,6 +1,6 @@
 /* ============================================================
    Générateur Snake Excel par FCI
-   Version : photos indexées + import ZIP (mobile)
+   Version : photos indexées + import ZIP (mobile) + Caméra
    ============================================================ */
 
 const state = {
@@ -10,6 +10,7 @@ const state = {
   modeleBuffer: null,
   photoFiles: [],
   photoIndex: [],
+  chambresDisponibles: [], // Ajouté pour le menu déroulant de la caméra
 };
 
 const $ = id => document.getElementById(id);
@@ -150,6 +151,7 @@ function preparerParFCI(rows, reverse = false) {
 
   const groupes = {};
   const ordreGroupes = [];
+  state.chambresDisponibles = []; // Réinitialisation
 
   rows.forEach(r => {
     if (s(r[cOp]) && s(r[cOp]).toUpperCase() !== "FT") return;
@@ -165,6 +167,12 @@ function preparerParFCI(rows, reverse = false) {
 
     if (!groupes[fciVal]) { groupes[fciVal] = []; ordreGroupes.push(fciVal); }
     groupes[fciVal].push(obj);
+    
+    // Remplissage de la liste pour la caméra
+    if (obj.CODE_CH1) {
+      const label = `CH ${obj.CODE_CH1} (${obj.COMMUNE}) - Ordre ${obj.ORDRE}`;
+      state.chambresDisponibles.push({ label, ...obj });
+    }
   });
 
   for (const fci of ordreGroupes) {
@@ -179,16 +187,11 @@ function preparerParFCI(rows, reverse = false) {
 
 /* ============================================================
    PHOTOS
-   Structure attendue :
-     <racine>/CH 596/001/MA/photo.jpg
-     <racine>/CH 596/MA/photo.jpg   (dossier d'ordre optionnel)
-   Le dossier directement au-dessus de la photo = type (MA, MB, ...)
    ============================================================ */
 const TYPES = ["MA", "MB", "MC", "MD", "MIRE_LG", "MIRE_L", "MIRE_P", "BOITE", "CASSETTE", "VUE_ENSEMBLE", "ETIQ_CABLE", "ETIQ_BOITE"];
 const ALIAS = { MIRE: "MIRE_LG" };
 const photoCache = new Map(); // File (ou stub ZIP) -> base64 compressé
 
-/* Index construit UNE fois, au choix du dossier / du ZIP */
 function indexPhotos(files) {
   const idx = [];
   for (const f of files) {
@@ -212,13 +215,11 @@ function findPhotosForChambre(ordre, ch1, index) {
   const chRaw = s(ch1).toUpperCase();
   if (!chRaw) return photos;
   const ch = chRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // "CH 596", "CH596", "CH_596" mais PAS "CH 5960" ni "CH 59"
   const reCh = new RegExp(`(^|[^A-Z0-9])CH[ _-]*0*${ch}(?![0-9A-Z])`);
   const num = safeInt(ordre);
 
   for (const it of index) {
     if (!it.parents.some(p => reCh.test(p))) continue;
-    // Si un dossier d'ordre numérique existe (001, 002...), il doit correspondre
     const ordres = it.parents.filter(p => /^0*\d+$/.test(p)).map(p => parseInt(p, 10));
     if (ordres.length && !ordres.includes(num)) continue;
     photos[it.type].push(it.file);
@@ -233,7 +234,7 @@ async function compressedBase64(file, maxDim = 400, quality = 0.7) {
   if (photoCache.has(file)) return photoCache.get(file);
   let bmp;
   try {
-    bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); // respecte l'EXIF
+    bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
   } catch (e) {
     console.warn("Photo illisible :", file.webkitRelativePath || file.name);
     return null;
@@ -280,10 +281,10 @@ if (zipInput) {
       for (const entry of entries) {
         const blob = await entry.async("blob");
         const real = new File([blob], entry.name.split("/").pop(), { type: blob.type || "image/jpeg" });
-        const b64 = await compressedBase64(real);       // compresse tout de suite (mémoire)
+        const b64 = await compressedBase64(real); // compresse tout de suite
         if (!b64) continue;
         const stub = { name: real.name, webkitRelativePath: entry.name };
-        photoCache.set(stub, b64);                      // on ne garde pas le blob
+        photoCache.set(stub, b64);
         photoCache.delete(real);
         stubs.push(stub);
         if (++n % 20 === 0) log(`   ${n}/${entries.length} photos...`);
@@ -296,6 +297,74 @@ if (zipInput) {
       log("❌ ZIP illisible : " + err.message, "err");
       alert("Impossible de lire le ZIP : " + err.message);
     }
+  });
+}
+
+/* ============================================================
+   CAMÉRA (Ajouté)
+   ============================================================ */
+const cameraDialog = $("camera-dialog");
+const btnCamera = $("btn-camera");
+const btnCameraGo = $("btn-camera-go");
+const btnCameraClose = $("btn-camera-close");
+const cameraInput = $("camera-input");
+const selChambre = $("sel-chambre");
+const selType = $("sel-type");
+
+if (btnCamera) {
+  btnCamera.addEventListener("click", () => {
+    if (state.chambresDisponibles.length === 0) {
+      alert("Veuillez d'abord sélectionner un fichier CSV (étape 1).");
+      return;
+    }
+    selChambre.innerHTML = state.chambresDisponibles
+      .map((c, i) => `<option value="${i}">${c.label}</option>`)
+      .join("");
+    cameraDialog.showModal();
+  });
+}
+
+if (btnCameraClose) {
+  btnCameraClose.addEventListener("click", () => cameraDialog.close());
+}
+
+if (btnCameraGo) {
+  btnCameraGo.addEventListener("click", () => cameraInput.click());
+}
+
+if (cameraInput) {
+  cameraInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const chambre = state.chambresDisponibles[selChambre.value];
+    const type = selType.value;
+
+    // Création du chemin virtuel pour que indexPhotos le comprenne
+    // Exemple : "001/CH 596/MA/photo.jpg"
+    const dossierChambre = `CH ${chambre.CODE_CH1}`;
+    const dossierOrdre = String(safeInt(chambre.ORDRE) ?? "ZZZ").padStart(3, "0");
+    const webkitRelativePath = `${dossierOrdre}/${dossierChambre}/${type}/${file.name}`;
+
+    // On crée un objet "stub" qui imite un fichier issu d'un dossier
+    const stub = { name: file.name, webkitRelativePath: webkitRelativePath };
+    
+    // On compresse et on met en cache immédiatement
+    const b64 = await compressedBase64(file);
+    if (b64) {
+      photoCache.set(stub, b64);
+      
+      // On ajoute à l'index existant
+      state.photoFiles.push(stub);
+      state.photoIndex = indexPhotos(state.photoFiles);
+      
+      log(`📸 Photo ajoutée : CH ${chambre.CODE_CH1} → ${type}`, "ok");
+    } else {
+      alert("Format d'image non supporté (essayez de convertir en JPEG).");
+    }
+    
+    cameraDialog.close();
+    cameraInput.value = "";
   });
 }
 
@@ -388,16 +457,15 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
       const masqueNorm = normaliser(masqueTxt);
       const obsTxt = masqueTxt.toUpperCase().replace(/\s+/g, "\n");
 
-if (masqueNorm.includes("non emprunte")) {
-  writeSafe(`H${base}`, "X");
-  writeMasterStyled(`Z${base}`, obsTxt);
-} else {
+      if (masqueNorm.includes("non emprunte")) {
+        writeSafe(`H${base}`, "X");
+        writeMasterStyled(`Z${base}`, obsTxt);
+      } else {
         const [l, n] = splitMasque(masqueTxt);
         if (n !== null) {
           writeSafe(`B${base + 3}`, l);
           writeSafe(`D${base + 3}`, n);
         } else {
-          // Texte libre = parcours non conforme
           writeSafe(`O${base + 14}`, "X");
           writeMasterStyled(`Z${base}`, obsTxt);
         }
@@ -420,12 +488,12 @@ if (masqueNorm.includes("non emprunte")) {
     // --- 3. Photos ---
     if (photoIndex && photoIndex.length > 0) {
       const photos = findPhotosForChambre(r.ORDRE, r.CODE_CH1, photoIndex);
-	const activeCols = hasBpe
-	? allCols
-	: {
-		...colsBase,
-		VUE_ENSEMBLE: colsBoite.VUE_ENSEMBLE
-		};
+      const activeCols = hasBpe
+        ? allCols
+        : {
+            ...colsBase,
+            VUE_ENSEMBLE: colsBoite.VUE_ENSEMBLE
+          };
       const startRow = base + 2;
       const endRow = startRow + 6;
 
