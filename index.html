@@ -84,6 +84,18 @@
     background: #E8F5E9;
     border-color: #2E7D32;
   }
+  dialog {
+    border: none; border-radius: 12px;
+    padding: 24px; max-width: 400px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  }
+  dialog::backdrop { background: rgba(0,0,0,0.4); }
+  dialog h3 { margin-bottom: 16px; color: #2E7D32; }
+  dialog select, dialog input {
+    width: 100%; padding: 10px;
+    border: 1px solid #ccc; border-radius: 8px;
+    margin-bottom: 12px; font-size: 1em;
+  }
 </style>
 </head>
 <body>
@@ -101,17 +113,12 @@
     <h2>📁 Fichiers d'entrée</h2>
 
     <div class="field">
-      <label>
-        📄 Fichier CSV des chambres
-        <span class="badge">Obligatoire</span>
-      </label>
-
+      <label>📄 Fichier CSV des chambres <span class="badge">Obligatoire</span></label>
       <div id="drop-zone">
         <div style="font-size: 2em;">📂</div>
         <div style="font-weight: 600; margin-top: 6px;">Glissez le CSV ici</div>
         <div style="font-size: 0.85em; color: #666; margin-top: 4px;">ou tapez pour choisir</div>
       </div>
-
       <input type="file" id="file-csv" accept=".csv" style="display:none">
       <p class="hint" id="csv-info" style="color: #f44336;">Aucun fichier sélectionné</p>
     </div>
@@ -119,14 +126,17 @@
     <div class="field">
       <label>📷 Dossier des photos (Optionnel)</label>
       <input type="file" id="file-photos" webkitdirectory directory multiple style="padding: 8px;">
-      <p class="hint" id="photo-hint">Sélectionnez le dossier principal (ex: CBM_PLA91_004_02_03V).</p>
+      <p class="hint">Sélectionnez le dossier principal. Les photos sont réduites à 400px automatiquement pour éviter de saturer le téléphone.</p>
     </div>
 
     <div class="field">
-      <label>
-        📊 Modèle Excel Snake
-        <span class="badge">✓ Intégré</span>
-      </label>
+      <label>📸 Ou prendre une photo directement</label>
+      <button type="button" id="btn-camera" style="background: #2196F3;">📸 Ouvrir la caméra</button>
+      <p class="hint">Choisissez la chambre et le type, puis prenez la photo.</p>
+    </div>
+
+    <div class="field">
+      <label>📊 Modèle Excel Snake <span class="badge">✓ Intégré</span></label>
       <p class="hint" id="modele-info">Chargement du modèle embarqué...</p>
     </div>
 
@@ -159,11 +169,32 @@
 
 </main>
 
+<!-- Dialogue pour la caméra -->
+<dialog id="camera-dialog">
+  <h3>📸 Prendre une photo</h3>
+  <label for="sel-chambre">Chambre</label>
+  <select id="sel-chambre"></select>
+  <label for="sel-type">Type de photo</label>
+  <select id="sel-type">
+    <option value="MA">MA</option>
+    <option value="MB">MB</option>
+    <option value="MC">MC</option>
+    <option value="MD">MD</option>
+    <option value="MIRE_LG">MIRE_LG</option>
+    <option value="BOITE">BOITE</option>
+    <option value="CASSETTE">CASSETTE</option>
+    <option value="VUE_ENSEMBLE">VUE_ENSEMBLE</option>
+    <option value="ETIQ_CABLE">ETIQ_CABLE</option>
+    <option value="ETIQ_BOITE">ETIQ_BOITE</option>
+  </select>
+  <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none">
+  <button type="button" id="btn-camera-go" style="background:#2196F3;">📷 Ouvrir l'appareil photo</button>
+  <button type="button" id="btn-camera-close" style="background:#aaa; margin-top:8px;">Annuler</button>
+</dialog>
+
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-
-<!-- Modèle base64 -->
 <script src="modele-b64.js"></script>
 <script src="app.js"></script>
 </body>
