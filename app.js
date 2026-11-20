@@ -388,10 +388,13 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
       const masqueNorm = normaliser(masqueTxt);
       const obsTxt = masqueTxt.toUpperCase().replace(/\s+/g, "\n");
 
-      if (masqueNorm.includes("non empruntee")) {
-        writeSafe(`H${base + 14}`, "X");
-        writeMasterStyled(`Z${base}`, obsTxt);
-      } else {
+	if (
+	masqueNorm.includes("non empruntee") ||
+	masqueNorm.includes("ch non empruntee")
+	) {
+	writeSafe(`H${base}`, "X");
+	writeMasterStyled(`Z${base}`, obsTxt);
+	} else {
         const [l, n] = splitMasque(masqueTxt);
         if (n !== null) {
           writeSafe(`B${base + 3}`, l);
