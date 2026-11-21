@@ -1,6 +1,6 @@
 /* ============================================================
    Générateur Snake Excel par FCI
-   Version : photos indexées + import ZIP (mobile) + Caméra
+   Version : photos + caméra + regroupement FCI conditionnel
    ============================================================ */
 
 const state = {
@@ -112,6 +112,16 @@ function splitMasque(val) {
   return [m[1], m[2] ? parseInt(m[2], 10) : null];
 }
 
+// Nettoie le FCI : garde les 11 premiers caractères si l'option est cochée
+function nettoyerFCI(fciBrut, doitRegrouper) {
+  if (!doitRegrouper) return String(fciBrut).trim();
+  const str = String(fciBrut).trim();
+  if (str.length > 11) {
+    return str.substring(0, 11).replace(/[_-]+$/, "");
+  }
+  return str;
+}
+
 /* ============================================================
    PARSING CSV
    ============================================================ */
@@ -126,12 +136,11 @@ function parseCSVFile(file) {
 }
 
 /* ============================================================
-   GROUPEMENT PAR FCI
+   CHARGEMENT POUR LA CAMÉRA
    ============================================================ */
-// CORRECTION 1 : Extraction des chambres pour le menu déroulant
 async function chargerChambresDansState() {
   if (!state.csvFile) return;
-  if (state.chambresDisponibles.length > 0) return; // Déjà chargé
+  if (state.chambresDisponibles.length > 0) return;
   try {
     const rows = await parseCSVFile(state.csvFile);
     const cols = Object.keys(rows[0]);
@@ -157,7 +166,10 @@ async function chargerChambresDansState() {
   } catch(e) { console.error(e); }
 }
 
-function preparerParFCI(rows, reverse = false) {
+/* ============================================================
+   GROUPEMENT PAR FCI
+   ============================================================ */
+function preparerParFCI(rows, reverse = false, doitRegrouper = true) {
   const cols = Object.keys(rows[0]);
   const cOp = trouverColonne(cols, "OP");
   const cFci = trouverColonne(cols, "FCI", "N°_FCI") || trouverColonneFuzzy(cols, "fci");
@@ -178,8 +190,11 @@ function preparerParFCI(rows, reverse = false) {
 
   rows.forEach(r => {
     if (s(r[cOp]) && s(r[cOp]).toUpperCase() !== "FT") return;
-    const fciVal = s(r[cFci]);
-    if (!fciVal) return;
+    const fciBrut = s(r[cFci]);
+    if (!fciBrut) return;
+
+    // On utilise la fonction de nettoyage conditionnelle
+    const fciVal = nettoyerFCI(fciBrut, doitRegrouper);
 
     const obj = {
       FCI: fciVal, CODE_CH1: s(r[cCh1]), CODE_CH2: s(r[cCh2]),
@@ -219,7 +234,6 @@ function indexPhotos(files) {
       .map(x => x.trim().toUpperCase())
       .filter(Boolean);
     
-    // Si le ZIP contient un dossier racine, on le supprime virtuellement
     if (segs.length > 2 && segs[0].startsWith("PHOTO")) segs.shift();
     
     segs.pop();
@@ -299,29 +313,18 @@ if (zipInput) {
 
       const stubs = [];
       let n = 0;
-      // CORRECTION 2 : On pré-compresse TOUT de suite pour ne pas saturer
       for (const entry of entries) {
         const blob = await entry.async("blob");
         const realFile = new File([blob], entry.name.split("/").pop(), { type: blob.type || "image/jpeg" });
-        
-        // On compresse en base64 immédiatement
         const b64 = await compressedBase64(realFile); 
         if (!b64) continue;
-        
-        // On crée un "stub" qui garde le chemin original
         const stub = { name: realFile.name, webkitRelativePath: entry.name };
-        
-        // On stocke le base64 dans le cache en utilisant le stub comme clé
         photoCache.set(stub, b64);
         stubs.push(stub);
-        
         if (++n % 20 === 0) log(`   ${n}/${entries.length} photos traitées...`);
       }
-      
-      // On ajoute ces nouveaux fichiers à l'index général
       state.photoFiles = state.photoFiles.concat(stubs);
       state.photoIndex = indexPhotos(state.photoFiles);
-      
       log(`📷 ${state.photoIndex.length} photos indexées au total (ZIP ajouté)`, "ok");
     } catch (err) {
       console.error(err);
@@ -344,9 +347,7 @@ const selType = $("sel-type");
 
 if (btnCamera) {
   btnCamera.addEventListener("click", async () => {
-    // CORRECTION 1 : On charge le CSV à la volée si ce n'est pas déjà fait
     await chargerChambresDansState();
-    
     if (state.chambresDisponibles.length === 0) {
       alert("Veuillez d'abord sélectionner un fichier CSV valide.");
       return;
@@ -527,7 +528,6 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
           continue;
         }
 
-        // Ici, compressedBase64 va utiliser le cache si c'est un stub de ZIP
         const b64 = await compressedBase64(list[0]);
         if (!b64) continue;
 
@@ -558,6 +558,7 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
   }
   m2Master.numFmt = "0";
 
+  // On s'assure que le nom du fichier est propre
   const fciPropre = sanitizeFilename(fciVal).replace(/[^a-zA-Z0-9_\-]/g, "");
   const codePropre = sanitizeFilename(codeCh2).replace(/[^a-zA-Z0-9_\-]/g, "");
   const filename = `Snake_${fciPropre}_${codePropre}.xlsx`;
@@ -584,9 +585,14 @@ $("btn-generer").addEventListener("click", async () => {
     if (!rows.length) throw new Error("CSV vide");
     const reverse = $("opt-sens").checked;
     const nomProjet = s($("inp-projet").value);
+    
+    // NOUVEAU : Récupération de l'état de la case à cocher
+    const doitRegrouper = $("opt-regrouper") ? $("opt-regrouper").checked : true;
+    if (doitRegrouper) log("🔗 Regroupement des FCI identiques activé.");
 
     log("📊 Regroupement par FCI...");
-    const { groupes, ordreGroupes } = preparerParFCI(rows, reverse);
+    // Modification de l'appel à preparerParFCI
+    const { groupes, ordreGroupes } = preparerParFCI(rows, reverse, doitRegrouper);
     if (!ordreGroupes.length) throw new Error("Aucune ligne FT avec un numéro FCI");
 
     state.zip = new JSZip();
