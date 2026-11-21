@@ -197,7 +197,9 @@ function preparerParFCI(rows, reverse = false, doitRegrouper = true) {
     const fciVal = nettoyerFCI(fciBrut, doitRegrouper);
 
     const obj = {
-      FCI: fciVal, CODE_CH1: s(r[cCh1]), CODE_CH2: s(r[cCh2]),
+      FCI: fciVal,
+      _fciOrigine: fciBrut, // <-- AJOUT POUR LE TRI CHRONOLOGIQUE
+      CODE_CH1: s(r[cCh1]), CODE_CH2: s(r[cCh2]),
       REF_CHAMBR: s(r[cRef]), BPE: s(r[cBpe]), MASQUE: s(r[cMasH]),
       DIAMETRE: s(r[cDiaH]), "MASQUE B": s(r[cMasB]), "DIAMETRE B": s(r[cDiaB]),
       ETIQUETTE_2: s(r[cEtiq2]), ORDRE: s(r[cOrdre]), COMMUNE: s(r[cCommune]),
@@ -207,8 +209,16 @@ function preparerParFCI(rows, reverse = false, doitRegrouper = true) {
     groupes[fciVal].push(obj);
   });
 
+  // <-- MODIFICATION DU TRI POUR RESPECTER L'ORDRE CHRONOLOGIQUE
   for (const fci of ordreGroupes) {
     groupes[fci].sort((a, b) => {
+      // 1. On trie d'abord par le nom du FCI d'origine 
+      // (pour que Fxxxx_2_ reste après Fxxxx)
+      const fciA = s(a._fciOrigine);
+      const fciB = s(b._fciOrigine);
+      if (fciA !== fciB) return fciA.localeCompare(fciB);
+      
+      // 2. Ensuite, on trie par ORDRE (numérique)
       const va = safeInt(a.ORDRE) ?? 999999;
       const vb = safeInt(b.ORDRE) ?? 999999;
       return reverse ? vb - va : va - vb;
@@ -558,7 +568,6 @@ async function generateExcelSnake(modeleBuffer, lignes, fciVal, codeCh2, numProj
   }
   m2Master.numFmt = "0";
 
-  // On s'assure que le nom du fichier est propre
   const fciPropre = sanitizeFilename(fciVal).replace(/[^a-zA-Z0-9_\-]/g, "");
   const codePropre = sanitizeFilename(codeCh2).replace(/[^a-zA-Z0-9_\-]/g, "");
   const filename = `Snake_${fciPropre}_${codePropre}.xlsx`;
@@ -586,12 +595,10 @@ $("btn-generer").addEventListener("click", async () => {
     const reverse = $("opt-sens").checked;
     const nomProjet = s($("inp-projet").value);
     
-    // NOUVEAU : Récupération de l'état de la case à cocher
     const doitRegrouper = $("opt-regrouper") ? $("opt-regrouper").checked : true;
     if (doitRegrouper) log("🔗 Regroupement des FCI identiques activé.");
 
     log("📊 Regroupement par FCI...");
-    // Modification de l'appel à preparerParFCI
     const { groupes, ordreGroupes } = preparerParFCI(rows, reverse, doitRegrouper);
     if (!ordreGroupes.length) throw new Error("Aucune ligne FT avec un numéro FCI");
 
