@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Générateur Snake Excel</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4CAF50">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -126,7 +129,7 @@
     <div class="field">
       <label>📷 Dossier des photos (Optionnel)</label>
       <input type="file" id="file-photos" webkitdirectory directory multiple style="padding: 8px;">
-      <p class="hint">Sélectionnez le dossier principal (ex: CBM_PLA91_004_02_03V). Les photos sont réduites automatiquement.</p>
+      <p class="hint">Sélectionnez le dossier principal (ex: CBM_PLA91_004_02_03V).</p>
     </div>
 
     <div class="field">
@@ -156,6 +159,15 @@
         <input type="checkbox" id="opt-sens" style="width:auto; margin-right:8px;">
         Inverser le sens du réseau (grand → petit)
       </label>
+    </div>
+
+    <!-- AJOUT DU BOUTON DE REGROUPEMENT ICI -->
+    <div class="field">
+      <label>
+        <input type="checkbox" id="opt-regrouper" style="width:auto; margin-right:8px;" checked>
+        Regrouper les FCI identiques (ex: F123... et F123..._2_)
+      </label>
+      <p class="hint">Si deux FCI commencent par les 11 mêmes caractères, ils seront fusionnés dans un seul fichier.</p>
     </div>
 
     <button id="btn-generer" disabled>🚀 Générer les Snakes</button>
@@ -203,5 +215,14 @@
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="modele-b64.js"></script>
 <script src="app.js"></script>
+
+<!-- Enregistrement du Service Worker pour la PWA -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
+    });
+  }
+</script>
 </body>
 </html>
