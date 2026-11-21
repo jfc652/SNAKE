@@ -1,6 +1,6 @@
 /* ============================================================
    Générateur Snake Excel par FCI
-   Version : photos + caméra + regroupement FCI chronologique
+   Version : tri chronologique strict + photos + caméra
    ============================================================ */
 
 const state = {
@@ -199,7 +199,6 @@ function preparerParFCI(rows, reverse = false, doitRegrouper = true) {
     const obj = {
       FCI: fciVal,
       _fciOrigine: fciBrut,
-      _indexOrigine: i, // <-- Mémorisation de l'ordre d'apparition dans le CSV
       CODE_CH1: s(r[cCh1]), CODE_CH2: s(r[cCh2]),
       REF_CHAMBR: s(r[cRef]), BPE: s(r[cBpe]), MASQUE: s(r[cMasH]),
       DIAMETRE: s(r[cDiaH]), "MASQUE B": s(r[cMasB]), "DIAMETRE B": s(r[cDiaB]),
@@ -210,19 +209,13 @@ function preparerParFCI(rows, reverse = false, doitRegrouper = true) {
     groupes[fciVal].push(obj);
   });
 
+  // --- TRI STRICT PAR ORDRE ---
+  // On ne trie plus par FCI d'origine, on respecte l'ordre numérique absolu
   for (const fci of ordreGroupes) {
     groupes[fci].sort((a, b) => {
-      // 1. On trie par le nom du FCI d'origine (pour que Fxxxx_2_ reste après Fxxxx)
-      const fciA = s(a._fciOrigine);
-      const fciB = s(b._fciOrigine);
-      if (fciA !== fciB) return fciA.localeCompare(fciB);
-      
-      // 2. On respecte STRICTEMENT l'ordre du fichier CSV
-      if (reverse) {
-        return b._indexOrigine - a._indexOrigine;
-      } else {
-        return a._indexOrigine - b._indexOrigine;
-      }
+      const va = safeInt(a.ORDRE) ?? 999999;
+      const vb = safeInt(b.ORDRE) ?? 999999;
+      return reverse ? vb - va : va - vb;
     });
   }
   return { groupes, ordreGroupes };
@@ -604,7 +597,6 @@ $("btn-generer").addEventListener("click", async () => {
     if (!ordreGroupes.length) throw new Error("Aucune ligne FT avec un numéro FCI");
 
     state.zip = new JSZip();
-    let derniereChambrePrecedente = null;
 
     for (let i = 0; i < ordreGroupes.length; i++) {
       const fci = ordreGroupes[i];
@@ -613,9 +605,8 @@ $("btn-generer").addEventListener("click", async () => {
 
       log(`\n🔨 Traitement FCI ${fci}...`);
 
-      const lignesAvecRappel = [];
-      if (derniereChambrePrecedente) lignesAvecRappel.push({ ...derniereChambrePrecedente });
-      lignesAvecRappel.push(...lignes);
+      // On n'ajoute plus de "Rappel" artificiel
+      const lignesAvecRappel = [...lignes];
 
       const { blob, filename } = await generateExcelSnake(
         state.modeleBuffer, lignesAvecRappel, fci, codeCh2, nomProjet, state.photoIndex
@@ -624,7 +615,6 @@ $("btn-generer").addEventListener("click", async () => {
       state.zip.file(filename, blob);
       log(`   ✔ ${filename}`, "ok");
 
-      if (lignes.length) derniereChambrePrecedente = lignes[lignes.length - 1];
       setProgress(((i + 1) / ordreGroupes.length) * 100);
     }
 
