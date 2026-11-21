@@ -1,6 +1,6 @@
 /* ============================================================
    Générateur Snake Excel par FCI
-   Version : photos + caméra + regroupement FCI conditionnel
+   Version : photos + caméra + regroupement FCI chronologique
    ============================================================ */
 
 const state = {
@@ -188,7 +188,7 @@ function preparerParFCI(rows, reverse = false, doitRegrouper = true) {
   const groupes = {};
   const ordreGroupes = [];
 
-  rows.forEach(r => {
+  rows.forEach((r, i) => {
     if (s(r[cOp]) && s(r[cOp]).toUpperCase() !== "FT") return;
     const fciBrut = s(r[cFci]);
     if (!fciBrut) return;
@@ -198,7 +198,8 @@ function preparerParFCI(rows, reverse = false, doitRegrouper = true) {
 
     const obj = {
       FCI: fciVal,
-      _fciOrigine: fciBrut, // <-- AJOUT POUR LE TRI CHRONOLOGIQUE
+      _fciOrigine: fciBrut,
+      _indexOrigine: i, // <-- Mémorisation de l'ordre d'apparition dans le CSV
       CODE_CH1: s(r[cCh1]), CODE_CH2: s(r[cCh2]),
       REF_CHAMBR: s(r[cRef]), BPE: s(r[cBpe]), MASQUE: s(r[cMasH]),
       DIAMETRE: s(r[cDiaH]), "MASQUE B": s(r[cMasB]), "DIAMETRE B": s(r[cDiaB]),
@@ -209,19 +210,19 @@ function preparerParFCI(rows, reverse = false, doitRegrouper = true) {
     groupes[fciVal].push(obj);
   });
 
-  // <-- MODIFICATION DU TRI POUR RESPECTER L'ORDRE CHRONOLOGIQUE
   for (const fci of ordreGroupes) {
     groupes[fci].sort((a, b) => {
-      // 1. On trie d'abord par le nom du FCI d'origine 
-      // (pour que Fxxxx_2_ reste après Fxxxx)
+      // 1. On trie par le nom du FCI d'origine (pour que Fxxxx_2_ reste après Fxxxx)
       const fciA = s(a._fciOrigine);
       const fciB = s(b._fciOrigine);
       if (fciA !== fciB) return fciA.localeCompare(fciB);
       
-      // 2. Ensuite, on trie par ORDRE (numérique)
-      const va = safeInt(a.ORDRE) ?? 999999;
-      const vb = safeInt(b.ORDRE) ?? 999999;
-      return reverse ? vb - va : va - vb;
+      // 2. On respecte STRICTEMENT l'ordre du fichier CSV
+      if (reverse) {
+        return b._indexOrigine - a._indexOrigine;
+      } else {
+        return a._indexOrigine - b._indexOrigine;
+      }
     });
   }
   return { groupes, ordreGroupes };
