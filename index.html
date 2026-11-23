@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Générateur Snake Excel</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4CAF50">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #f4f6f8; color: #222; padding: 16px;
+    min-height: 100vh;
+  }
+  header {
+    background: linear-gradient(135deg, #4CAF50, #2E7D32);
+    color: white; margin: -16px -16px 16px -16px;
+    padding: 20px; text-align: center;
+  }
+  h1 { font-size: 1.3em; }
+  .card {
+    background: white; border-radius: 12px;
+    padding: 20px; margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  h2 { font-size: 1.1em; margin-bottom: 14px; color: #2E7D32; }
+  .field { margin: 14px 0; }
+  .field label {
+    display: block; font-weight: 600;
+    margin-bottom: 6px; font-size: 0.95em;
+  }
+  .field input[type=text], .field input[type=file] {
+    width: 100%; padding: 12px;
+    border: 1px solid #ccc; border-radius: 8px;
+    font-size: 1em; background: white;
+  }
+  button {
+    padding: 14px 20px; border: none;
+    border-radius: 8px; font-size: 1em;
+    font-weight: 600; cursor: pointer;
+    width: 100%; margin-top: 10px;
+    background: #4CAF50; color: white;
+    transition: background 0.2s;
+  }
+  button:active { background: #388E3C; }
+  button:disabled { background: #aaa; cursor: not-allowed; }
+  .hidden { display: none !important; }
+  .hint { font-size: 0.85em; color: #666; margin-top: 6px; }
+  #log {
+    font-family: monospace; font-size: 0.8em;
+    background: #1a1a1a; color: #0f0;
+    padding: 12px; border-radius: 8px;
+    max-height: 300px; overflow-y: auto;
+    margin-bottom: 14px; white-space: pre-wrap;
+  }
+  .ok { color: #4CAF50; }
+  .err { color: #f44336; }
+  #progress-bar {
+    height: 10px; background: #ddd;
+    border-radius: 5px; overflow: hidden;
+    margin: 10px 0;
+  }
+  #progress-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #4CAF50, #2E7D32);
+    transition: width 0.3s;
+  }
+  .badge {
+    display: inline-block; padding: 3px 8px;
+    background: #E8F5E9; color: #2E7D32;
+    border-radius: 6px; font-size: 0.8em;
+    margin-left: 6px; font-weight: 600;
+  }
+  #drop-zone {
+    border: 3px dashed #4CAF50;
+    border-radius: 10px;
+    padding: 24px 12px;
+    text-align: center;
+    background: #F1F8E9;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  #drop-zone.dragover {
+    background: #E8F5E9;
+    border-color: #2E7D32;
+  }
+  dialog {
+    border: none; border-radius: 12px;
+    padding: 24px; max-width: 400px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  }
+  dialog::backdrop { background: rgba(0,0,0,0.4); }
+  dialog h3 { margin-bottom: 16px; color: #2E7D32; }
+  dialog select, dialog input {
+    width: 100%; padding: 10px;
+    border: 1px solid #ccc; border-radius: 8px;
+    margin-bottom: 12px; font-size: 1em;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🐍 Générateur Snake Excel</h1>
+  <p style="font-size:0.85em; margin-top:6px; opacity:0.9">
+    Modèle intégré — Photos optionnelles
+  </p>
+</header>
+
+<main>
+
+  <section id="step-1" class="card">
+    <h2>📁 Fichiers d'entrée</h2>
+
+    <div class="field">
+      <label>📄 Fichier CSV des chambres <span class="badge">Obligatoire</span></label>
+      <div id="drop-zone">
+        <div style="font-size: 2em;">📂</div>
+        <div style="font-weight: 600; margin-top: 6px;">Glissez le CSV ici</div>
+        <div style="font-size: 0.85em; color: #666; margin-top: 4px;">ou tapez pour choisir</div>
+      </div>
+      <input type="file" id="file-csv" accept=".csv" style="display:none">
+      <p class="hint" id="csv-info" style="color: #f44336;">Aucun fichier sélectionné</p>
+    </div>
+
+    <div class="field">
+      <label>📷 Dossier des photos (Optionnel)</label>
+      <input type="file" id="file-photos" webkitdirectory directory multiple style="padding: 8px;">
+      <p class="hint">Sélectionnez le dossier principal (ex: CBM_PLA91_004_02_03V).</p>
+    </div>
+
+    <div class="field">
+      <label>📦 Fichier ZIP des photos (Optionnel - pour mobile)</label>
+      <input type="file" id="file-zip" accept=".zip" style="padding: 8px;">
+      <p class="hint">Idéal sur téléphone. Compressez le dossier de photos en ZIP et sélectionnez-le.</p>
+    </div>
+
+    <div class="field">
+      <label>📸 Ou prendre une photo directement</label>
+      <button type="button" id="btn-camera" style="background: #2196F3;">📸 Ouvrir la caméra</button>
+      <p class="hint">Choisissez la chambre et le type, puis prenez la photo.</p>
+    </div>
+
+    <div class="field">
+      <label>📊 Modèle Excel Snake <span class="badge">✓ Intégré</span></label>
+      <p class="hint" id="modele-info">Chargement du modèle embarqué...</p>
+    </div>
+
+    <div class="field">
+      <label>📝 Nom du projet (facultatif)</label>
+      <input type="text" id="inp-projet" placeholder="ex: PLA91_CBM" value="">
+    </div>
+
+    <div class="field">
+      <label>
+        <input type="checkbox" id="opt-sens" style="width:auto; margin-right:8px;">
+        Inverser le sens du réseau (grand → petit)
+      </label>
+    </div>
+
+    <!-- AJOUT DU BOUTON DE REGROUPEMENT ICI -->
+    <div class="field">
+      <label>
+        <input type="checkbox" id="opt-regrouper" style="width:auto; margin-right:8px;" checked>
+        Regrouper les FCI identiques (ex: F123... et F123..._2_)
+      </label>
+      <p class="hint">Si deux FCI commencent par les 11 mêmes caractères, ils seront fusionnés dans un seul fichier.</p>
+    </div>
+
+    <button id="btn-generer" disabled>🚀 Générer les Snakes</button>
+  </section>
+
+  <section id="step-fusion" class="card">
+    <h2>🗂️ Fusionner deux dossiers de photos</h2>
+    <div class="field">
+      <label>Dossier 1 (déjà rempli en partie)</label>
+      <input type="file" id="fusion-d1" webkitdirectory directory multiple style="padding: 8px;">
+    </div>
+    <div class="field">
+      <label>Dossier 2 (photos manquantes)</label>
+      <input type="file" id="fusion-d2" webkitdirectory directory multiple style="padding: 8px;">
+    </div>
+    <p class="hint">Structure : Dossier / Chambre / photos. Les doublons (même contenu) sont ignorés.</p>
+    <button id="btn-fusion" disabled style="background:#FF9800;">🔀 Fusionner</button>
+    <p class="hint" id="fusion-status"></p>
+    <div id="fusion-result" class="hidden">
+      <button id="btn-fusion-dl">⬇️ Télécharger le ZIP fusionné</button>
+      <button id="btn-fusion-use" style="background:#2196F3;">📷 Utiliser ces photos pour les Snakes</button>
+    </div>
+  </section>
+
+  <section id="step-2" class="card hidden">
+    <h2>⚙️ Génération en cours...</h2>
+    <div id="log"></div>
+    <div id="progress-bar"><div id="progress-fill"></div></div>
+  </section>
+
+  <section id="step-3" class="card hidden">
+    <h2>✅ Terminé</h2>
+    <p id="result-msg"></p>
+    <button id="btn-download">⬇️ Télécharger le ZIP</button>
+  </section>
+
+</main>
+
+<!-- Dialogue pour la caméra -->
+<dialog id="camera-dialog">
+  <h3>📸 Prendre une photo</h3>
+  <label for="sel-chambre">Chambre</label>
+  <select id="sel-chambre"></select>
+  <label for="sel-type">Type de photo</label>
+  <select id="sel-type">
+    <option value="MA">MA</option>
+    <option value="MB">MB</option>
+    <option value="MC">MC</option>
+    <option value="MD">MD</option>
+    <option value="MIRE_LG">MIRE_LG</option>
+    <option value="BOITE">BOITE</option>
+    <option value="CASSETTE">CASSETTE</option>
+    <option value="VUE_ENSEMBLE">VUE_ENSEMBLE</option>
+    <option value="ETIQ_CABLE">ETIQ_CABLE</option>
+    <option value="ETIQ_BOITE">ETIQ_BOITE</option>
+  </select>
+  <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none">
+  <button type="button" id="btn-camera-go" style="background:#2196F3;">📷 Ouvrir l'appareil photo</button>
+  <button type="button" id="btn-camera-close" style="background:#aaa; margin-top:8px;">Annuler</button>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="modele-b64.js"></script>
+<script src="app.js"></script>
+<script src="fusion.js"></script>
+
+<!-- Enregistrement du Service Worker pour la PWA -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
+    });
+  }
+</script>
+</body>
+</html>
